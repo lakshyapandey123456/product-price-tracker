@@ -1,13 +1,10 @@
 import { chromium } from 'playwright';
+import { execSync } from 'child_process';
 
 const BASE_URL = 'https://demo.inelabteamdev.com';
 
-/**
- * Scrapes a single product from the mock store.
- * Handles the hover requirement (min 8 moves, 600ms dwell time) and reveal button.
- */
-export async function scrapeProduct(productId, headed = false) {
-  const browser = await chromium.launch({
+async function launchBrowser(headed = false) {
+  const launchOptions = {
     headless: !headed,
     slowMo: headed ? 250 : 0,
     args: [
@@ -18,7 +15,26 @@ export async function scrapeProduct(productId, headed = false) {
       '--no-first-run',
       '--no-zygote'
     ]
-  });
+  };
+
+  try {
+    return await chromium.launch(launchOptions);
+  } catch (err) {
+    if (err.message && err.message.includes("Executable doesn't exist")) {
+      console.log('[Scraper] Chromium executable missing. Downloading now via playwright install...');
+      execSync('npx playwright install chromium', { stdio: 'inherit' });
+      return await chromium.launch(launchOptions);
+    }
+    throw err;
+  }
+}
+
+/**
+ * Scrapes a single product from the mock store.
+ * Handles the hover requirement (min 8 moves, 600ms dwell time) and reveal button.
+ */
+export async function scrapeProduct(productId, headed = false) {
+  const browser = await launchBrowser(headed);
 
   const context = await browser.newContext({
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
