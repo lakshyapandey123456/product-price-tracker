@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
-// Robust API URL normalization (handles trailing slashes and missing /api)
-let rawApi = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+// Use your live Render backend URL by default
+let rawApi = import.meta.env.VITE_API_URL || 'https://product-price-tracker-backend-mdm8.onrender.com/api';
 rawApi = rawApi.trim().replace(/\/+$/, '');
 const API_BASE = rawApi.endsWith('/api') ? rawApi : `${rawApi}/api`;
 
