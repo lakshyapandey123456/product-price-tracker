@@ -11,16 +11,16 @@ if (!fs.existsSync(recordingsDir)) {
   fs.mkdirSync(recordingsDir, { recursive: true });
 }
 
-async function runExtendedDemo() {
+async function runCleanDemo() {
   console.log('\n=============================================================');
-  console.log('  STARTING EXTENDED HEADED RUN VIDEO RECORDING (2.5 - 3 MINS)');
+  console.log('  STARTING CLEAN HEADED RUN VIDEO (NO OVERLAYS / BANNERS)');
   console.log('  Target Length: ~2 minutes 45 seconds');
   console.log('  Saving to: backend/recordings/headed-run-demo.webm');
   console.log('=============================================================\n');
 
   const browser = await chromium.launch({
     headless: false,
-    slowMo: 100,
+    slowMo: 120,
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=1280,820']
   });
 
@@ -34,187 +34,82 @@ async function runExtendedDemo() {
 
   const page = await context.newPage();
 
-  async function showOverlay(title, subtitle = '', color = '#1e293b') {
-    try {
-      await page.evaluate(({ t, s, c }) => {
-        let banner = document.getElementById('demo-overlay-banner');
-        if (!banner) {
-          banner = document.createElement('div');
-          banner.id = 'demo-overlay-banner';
-          banner.style.position = 'fixed';
-          banner.style.top = '16px';
-          banner.style.left = '50%';
-          banner.style.transform = 'translateX(-50%)';
-          banner.style.padding = '14px 28px';
-          banner.style.borderRadius = '10px';
-          banner.style.fontFamily = 'system-ui, -apple-system, sans-serif';
-          banner.style.color = '#ffffff';
-          banner.style.zIndex = '999999';
-          banner.style.boxShadow = '0 8px 24px rgba(0,0,0,0.35)';
-          banner.style.transition = 'all 0.4s ease';
-          banner.style.textAlign = 'center';
-          banner.style.maxWidth = '850px';
-          banner.style.lineHeight = '1.4';
-          banner.style.pointerEvents = 'none';
-          document.body.appendChild(banner);
-        }
-        banner.style.backgroundColor = c;
-        banner.innerHTML = '<div style="font-size:16px; font-weight:700;">' + t + '</div>' +
-          (s ? '<div style="font-size:13px; opacity:0.9; margin-top:4px;">' + s + '</div>' : '');
-      }, { t: title, s: subtitle, c: color });
-    } catch (e) {}
-  }
+  // Natural human hover helper
+  async function naturalHoverAndScrape(productId) {
+    console.log(`[Scraper] Navigating to Product ${productId}...`);
+    await page.goto(`https://demo.inelabteamdev.com/product/${productId}`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(6000);
 
-  async function clearCookieOverlays() {
-    try {
-      await page.evaluate(() => {
-        document.querySelectorAll('.cookie-overlay, [class*="cookie"], [class*="modal"]').forEach(el => el.remove());
+    // Locate price block
+    const priceBlock = page.locator('.price-block');
+    await priceBlock.waitFor({ state: 'visible', timeout: 10000 });
+
+    // Simulate natural mouse movements back and forth to satisfy the dwell threshold
+    console.log(`[Scraper] Moving cursor over price block for Product ${productId}...`);
+    for (let i = 0; i < 16; i++) {
+      await priceBlock.hover({
+        position: { x: 40 + (i * 10), y: 30 + (i % 2 === 0 ? 6 : -6) },
+        force: true
       });
-    } catch (e) {}
-  }
+      await page.waitForTimeout(140);
+    }
+    await page.waitForTimeout(1500);
 
-  // Safe helper to simulate hover and reveal quote with retry resilience
-  async function scrapeScene(productId, productName, category) {
-    try {
-      await page.goto('https://demo.inelabteamdev.com/product/' + productId, { waitUntil: 'domcontentloaded' });
-      await clearCookieOverlays();
-      await showOverlay(
-        'Product: ' + productName + ' (' + category + ')',
-        'Target URL: /product/' + productId + ' — Price is initially hidden behind interaction barrier.',
-        '#334155'
-      );
-      await page.waitForTimeout(6000);
-
-      const priceBlock = page.locator('.price-block');
-      await priceBlock.waitFor({ state: 'visible', timeout: 10000 });
-
-      await showOverlay(
-        'Simulating Human Cursor Movement & Dwell Telemetry',
-        'Traversing the price container to fulfill minimum 8 moves and 600ms dwell threshold...',
-        '#d97706'
-      );
-
-      for (let i = 0; i < 16; i++) {
-        await priceBlock.hover({ position: { x: 35 + (i * 12), y: 30 + (i % 2 === 0 ? 6 : -6) }, force: true });
-        await page.waitForTimeout(100);
-      }
-      await page.waitForTimeout(1000);
-
-      await showOverlay(
-        'Dwell Threshold Met! Unlocking "Reveal price"',
-        'Clicking reveal button to initiate challenge token and quote decryption...',
-        '#0284c7'
-      );
-
-      const revealBtn = page.locator('button[aria-label="Reveal price"]');
+    // Click reveal button
+    const revealBtn = page.locator('button[aria-label="Reveal price"]');
+    if (await revealBtn.isVisible()) {
       await revealBtn.click({ force: true });
+    }
 
-      // Wait for either success or handle retry
-      let success = false;
-      for (let attempt = 0; attempt < 6; attempt++) {
-        try {
-          await page.waitForSelector('.price-block.price-success', { timeout: 4000 });
-          success = true;
-          break;
-        } catch (e) {
-          const retryBtn = page.locator('button:has-text("Try again"), button:has-text("Refresh price")');
-          if (await retryBtn.isVisible()) {
-            await showOverlay(
-              'Store Triggered Flakiness / Retry State',
-              'Scraper automatically clicks retry button to handle slow mock response...',
-              '#ea580c'
-            );
-            await retryBtn.click({ force: true });
-            await page.waitForTimeout(2000);
-          }
+    // Handle quote arrival or retry button
+    for (let a = 0; a < 6; a++) {
+      try {
+        await page.waitForSelector('.price-block.price-success', { timeout: 3500 });
+        break;
+      } catch (e) {
+        const retryBtn = page.locator('button:has-text("Try again"), button:has-text("Refresh price")');
+        if (await retryBtn.isVisible()) {
+          console.log(`[Scraper] Handling retry for Product ${productId}...`);
+          await retryBtn.click({ force: true });
+          await page.waitForTimeout(2000);
         }
       }
-
-      if (success) {
-        const successBlock = page.locator('.price-block.price-success');
-        const priceText = await successBlock.textContent();
-        await showOverlay(
-          '✅ Scrape Successful: ' + productName,
-          'Extracted: ' + priceText.trim().replace(/\s+/g, ' '),
-          '#16a34a'
-        );
-      } else {
-        await showOverlay(
-          'Honest Attempt Logged',
-          'Logged attempt with response outcome in audit log without storing corrupt data.',
-          '#0284c7'
-        );
-      }
-      await page.waitForTimeout(8000);
-    } catch (err) {
-      console.log('Scene notice:', err.message);
     }
+
+    // Smoothly scroll down to show product specs and reviews
+    await page.mouse.wheel(0, 400);
+    await page.waitForTimeout(4000);
+    await page.mouse.wheel(0, -400);
+    await page.waitForTimeout(4000);
   }
 
   try {
-    // -------------------------------------------------------------
-    // SCENE 1: Introduction (20s)
-    // -------------------------------------------------------------
-    console.log('[1/6] Intro Scene...');
+    // 1. Storefront Catalog Browse (20s)
+    console.log('[1/5] Browsing Storefront...');
     await page.goto('https://demo.inelabteamdev.com/', { waitUntil: 'domcontentloaded' });
-    await clearCookieOverlays();
-    await showOverlay(
-      'INE Software Engineer Intern Assignment — Headed Scraper Run',
-      'Demonstrating reliable product scraping, dwell telemetry bypass, retry recovery & slow response handling.',
-      '#1e40af'
-    );
-    await page.waitForTimeout(20000);
+    await page.waitForTimeout(5000);
+    await page.mouse.wheel(0, 500);
+    await page.waitForTimeout(6000);
+    await page.mouse.wheel(0, -500);
+    await page.waitForTimeout(5000);
 
-    // -------------------------------------------------------------
-    // SCENE 2: Product 1 - Nordkraft Headphones Pro (~30s)
-    // -------------------------------------------------------------
-    console.log('[2/6] Product 1...');
-    await scrapeScene(1, 'Nordkraft Headphones Pro', 'Audio Category');
+    // 2. Product 1: Nordkraft Headphones Pro (Audio) (38s)
+    await naturalHoverAndScrape(1);
 
-    // -------------------------------------------------------------
-    // SCENE 3: Product 2 - Helix USB Hub Pro (~30s)
-    // -------------------------------------------------------------
-    console.log('[3/6] Product 2...');
-    await scrapeScene(46, 'Helix USB Hub Pro', 'Power Category');
+    // 3. Product 2: Helix USB Hub Pro (Power) (38s)
+    await naturalHoverAndScrape(46);
 
-    // -------------------------------------------------------------
-    // SCENE 4: Product 3 - Auralite Motion Sensor (~30s)
-    // -------------------------------------------------------------
-    console.log('[4/6] Product 3...');
-    await scrapeScene(134, 'Auralite Motion Sensor Mini', 'Smart Home Category');
+    // 4. Product 3: Auralite Motion Sensor (Smart Home) (38s)
+    await naturalHoverAndScrape(134);
 
-    // -------------------------------------------------------------
-    // SCENE 5: Resilience & Graceful Error Handling (~30s)
-    // -------------------------------------------------------------
-    console.log('[5/6] Edge Case Resilience...');
+    // 5. Handling Missing / Edge Case Product (25s)
+    console.log('[5/5] Testing Edge Case (404 Missing Product)...');
     await page.goto('https://demo.inelabteamdev.com/product/999999', { waitUntil: 'domcontentloaded' });
-    await clearCookieOverlays();
-    await showOverlay(
-      'Test 4: Resilience & Edge-Case Handling (Product 404 / Missing)',
-      'Deliberately testing unrecoverable response: Scraper must never crash, never store corrupt data, and log honestly.',
-      '#b91c1c'
-    );
-    await page.waitForTimeout(14000);
+    await page.waitForTimeout(18000);
 
-    await showOverlay(
-      'Honest Audit Logging Verification',
-      'Status recorded as "FAILED" with timestamp and latency in scrape_logs. Database integrity preserved.',
-      '#475569'
-    );
-    await page.waitForTimeout(14000);
-
-    // -------------------------------------------------------------
-    // SCENE 6: Outro & Architecture Recap (20s)
-    // -------------------------------------------------------------
-    console.log('[6/6] Outro Scene...');
+    // Return to catalog for final view (15s)
     await page.goto('https://demo.inelabteamdev.com/', { waitUntil: 'domcontentloaded' });
-    await clearCookieOverlays();
-    await showOverlay(
-      'Demo Complete — All Assignment Deliverables Satisfied',
-      'Live Site: Vercel | Backend: Render | Database: Supabase | Schedule: 2-Hour Cron via cron-job.org',
-      '#15803d'
-    );
-    await page.waitForTimeout(20000);
+    await page.waitForTimeout(14000);
 
   } finally {
     const video = page.video();
@@ -228,11 +123,11 @@ async function runExtendedDemo() {
         fs.copyFileSync(videoPath, finalVideoPath);
       } catch (e) {}
       console.log('\n=============================================================');
-      console.log('✅ EXTENDED VIDEO RECORDING FINISHED AND SAVED!');
+      console.log('✅ CLEAN VIDEO RECORDING FINISHED AND SAVED!');
       console.log('📁 File Location: ' + finalVideoPath);
       console.log('=============================================================\n');
     }
   }
 }
 
-runExtendedDemo().catch(console.error);
+runCleanDemo().catch(console.error);
