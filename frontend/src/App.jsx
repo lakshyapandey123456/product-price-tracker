@@ -98,11 +98,17 @@ export default function App() {
   async function handleManualScrape(productId) {
     setScrapingId(productId);
     try {
-      await fetch(`${API_BASE}/products/${productId}/scrape`, { method: 'POST' });
+      const res = await fetch(`${API_BASE}/products/${productId}/scrape`, { method: 'POST' });
+      const data = await res.json();
+      if (data?.result && !data.result.success) {
+        alert(`Scrape note: ${data.result.error || 'Scrape attempt timed out. Check audit logs.'}`);
+      }
       await loadTrackedProducts();
       if (selectedProduct && selectedProduct.id === productId) {
         viewProductDetails(selectedProduct);
       }
+    } catch (err) {
+      alert(`Network error during scrape: ${err.message}`);
     } finally {
       setScrapingId(null);
     }

@@ -9,10 +9,21 @@ const BASE_URL = 'https://demo.inelabteamdev.com';
 export async function scrapeProduct(productId, headed = false) {
   const browser = await chromium.launch({
     headless: !headed,
-    slowMo: headed ? 250 : 0
+    slowMo: headed ? 250 : 0,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--no-first-run',
+      '--no-zygote'
+    ]
   });
 
-  const page = await browser.newPage();
+  const context = await browser.newContext({
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+  });
+  const page = await context.newPage();
 
   try {
     const productUrl = `${BASE_URL}/product/${productId}`;
