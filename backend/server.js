@@ -28,6 +28,19 @@ let memoryLogs = [];
 
 const MOCK_STORE_API = 'https://demo.inelabteamdev.com/api';
 
+// Root Health Check Route
+app.get('/', (req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'INE Product Price Tracker API is running live!',
+    endpoints: {
+      search: '/api/catalog/search?q=...',
+      products: '/api/products',
+      cron: '/api/scrape/cron'
+    }
+  });
+});
+
 // 1. Search Mock Store Catalog (Fast HTTP Fetch)
 app.get('/api/catalog/search', async (req, res) => {
   const query = (req.query.q || '').trim().toLowerCase();

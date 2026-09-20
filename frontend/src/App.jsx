@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+// Robust API URL normalization (handles trailing slashes and missing /api)
+let rawApi = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+rawApi = rawApi.trim().replace(/\/+$/, '');
+const API_BASE = rawApi.endsWith('/api') ? rawApi : `${rawApi}/api`;
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState(null);
 
   const [trackedProducts, setTrackedProducts] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -24,7 +28,7 @@ export default function App() {
       const data = await res.json();
       if (data.success) setTrackedProducts(data.products || []);
     } catch (err) {
-      console.error('Failed to load products', err);
+      console.error('Failed to load products from backend:', err);
     }
   }
 
@@ -32,10 +36,25 @@ export default function App() {
     e.preventDefault();
     if (!searchQuery.trim()) return;
     setSearching(true);
+    setSearchError(null);
     try {
-      const res = await fetch(`${API_BASE}/catalog/search?q=${encodeURIComponent(searchQuery)}`);
+      const targetUrl = `${API_BASE}/catalog/search?q=${encodeURIComponent(searchQuery)}`;
+      const res = await fetch(targetUrl);
+      if (!res.ok) {
+        throw new Error(`Server responded with HTTP ${res.status}. Check backend logs.`);
+      }
       const data = await res.json();
-      setSearchResults(data.items || []);
+      if (data.success) {
+        setSearchResults(data.items || []);
+        if ((data.items || []).length === 0) {
+          setSearchError('No products found matching that name in the store.');
+        }
+      } else {
+        throw new Error(data.error || 'Search failed');
+      }
+    } catch (err) {
+      console.error('Search error:', err);
+      setSearchError(`Failed to fetch: ${err.message}. If your Render backend was asleep, please wait ~30 seconds for it to wake up and try again!`);
     } finally {
       setSearching(false);
     }
@@ -116,6 +135,12 @@ export default function App() {
             {searching ? 'Searching...' : 'Search Store'}
           </button>
         </form>
+
+        {searchError && (
+          <div style={{ marginTop: 12, padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, color: '#991b1b', fontSize: '0.9rem' }}>
+            ⚠️ {searchError}
+          </div>
+        )}
 
         {searchResults.length > 0 && (
           <div className="search-results">
